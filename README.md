@@ -32,7 +32,7 @@ docker-compose up -d
 3. Right-click "Servers" → "Register" → "Server"
 4. **General tab**: Name = "PostgreSQL Vector DB"
 5. **Connection tab**:
-   - Host: `postgres` (container name)
+   - Host: `postgres` (container ip like => 206.189.131.217)
    - Port: `5432`
    - Username: `postgres`
    - Password: `password123`
@@ -126,3 +126,68 @@ docker exec -it postgres_pgvector psql -U postgres -c "SELECT vector_dims('[1,2,
 3. Navigate to Extensions and create the `vector` extension
 
 The markdown file above contains everything you need to replicate this setup on any new server, including resource monitoring, troubleshooting, and vector search examples.
+
+
+**For Laravel**
+
+Postgres error "could not find driver"
+
+Got it — the error is still **“could not find driver.”**
+From your last screenshot:
+
+* CLI = **PHP 8.4.11**
+* FPM = **8.1** and **8.3** (Nginx points to both across sites)
+
+`php artisan ...` runs with **CLI 8.4**, so even if you installed `php8.1-pgsql` / `php8.3-pgsql`, Artisan will still fail until **8.4** has the driver.
+
+## Fix for the CLI (what Artisan uses)
+
+```bash
+# 1) Install the pgsql driver for PHP 8.4 (CLI)
+sudo apt update
+sudo apt install -y php8.4-pgsql  # ← this is the key one
+
+# 2) Verify it loaded for CLI 8.4
+php -m | grep -E 'pdo_pgsql|pgsql'
+php -i | grep -i "PDO drivers"     # should include pgsql
+```
+
+If your repo doesn’t have `php8.4-pgsql`, either:
+
+```bash
+sudo apt install php-pgsql         # installs for the default PHP; or
+sudo apt install php8.3-pgsql      # and run Artisan with php8.3:
+php8.3 artisan db:test postgresql_ai
+```
+
+## (Optional) Also cover FPM (web requests)
+
+If your app will hit Postgres from web too, keep these installed:
+
+```bash
+sudo apt install -y php8.1-pgsql php8.3-pgsql
+sudo systemctl restart php8.1-fpm php8.3-fpm nginx
+```
+
+Check which FPM Nginx uses:
+
+```bash
+grep fastcgi_pass /etc/nginx/sites-enabled/* -R
+```
+
+Then verify the module for that version:
+
+```bash
+php8.1 -m | grep pgsql
+php8.3 -m | grep pgsql
+```
+
+## Finally
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+php artisan db:test postgresql_ai
+```
+
+This will remove the “could not find driver” error for Artisan (CLI). If the next error is about auth or network, I’ll give you the exact `postgresql.conf`, `pg_hba.conf`, and UFW rules to allow your web/CLI host.
